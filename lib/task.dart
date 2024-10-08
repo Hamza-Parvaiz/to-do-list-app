@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http; // Add 'as http'
 
 void main() {
   runApp(const MyApp());
@@ -16,6 +18,30 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class Task {
+  final int userId;
+  final int id;
+  final String title;
+  final bool completed;
+
+  Task({
+    required this.userId,
+    required this.id,
+    required this.title,
+    required this.completed,
+  });
+
+  // Factory method to create a Task from JSON
+  factory Task.fromJson(Map<String, dynamic> json) {
+    return Task(
+      userId: json['userId'],
+      id: json['id'],
+      title: json['title'],
+      completed: json['completed'],
+    );
+  }
+}
+
 class TaskScreen extends StatefulWidget {
   const TaskScreen({super.key});
 
@@ -23,13 +49,17 @@ class TaskScreen extends StatefulWidget {
   State<TaskScreen> createState() => _TaskScreenState();
 }
 
-class _TaskScreenState extends State<TaskScreen> with SingleTickerProviderStateMixin {
+class _TaskScreenState extends State<TaskScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  List<Task> _tasks = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _fetchTasks();
   }
 
   @override
@@ -38,65 +68,92 @@ class _TaskScreenState extends State<TaskScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  // Fetch tasks from API
+  Future<void> _fetchTasks() async {
+    final response =
+        await http.get(Uri.parse('https://jsonplaceholder.typicode.com/todos'));
+
+    if (response.statusCode == 200) {
+      List data = jsonDecode(response.body);
+      setState(() {
+        _tasks = data.map((task) => Task.fromJson(task)).toList();
+        _isLoading = false;
+      });
+    } else {
+      throw Exception('Failed to load tasks');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white, // Remove the red bar (set background to white)
+        backgroundColor: Colors.white,
         title: const Text(
           'All Tasks',
           style: TextStyle(
             fontSize: 33,
             fontWeight: FontWeight.bold,
-            color: Colors.red, // Red color for 'All Tasks' text
-            shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)], // Brown shadow
+            color: Colors.red,
+            shadows: [
+              Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)
+            ],
           ),
         ),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.red, // Keep indicator red to match the theme
+          indicatorColor: Colors.red,
           tabs: const [
             Tab(
-              icon: Icon(Icons.event, color: Colors.red, shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)]), // Red icon with brown shadow
-              child: Text(
-                'TODAY',
-                style: TextStyle(
-                  color: Colors.red, // Red text in tabs
-                  shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)], // Brown shadow
-                ),
-              ),
+              icon: Icon(Icons.event, color: Colors.red),
+              child: Text('TODAY', style: TextStyle(color: Colors.red)),
             ),
             Tab(
-              icon: Icon(Icons.calendar_today, color: Colors.red, shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)]), // Red icon with brown shadow
-              child: Text(
-                'TOMORROW',
-                style: TextStyle(
-                  color: Colors.red, // Red text in tabs
-                  shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)], // Brown shadow
-                ),
-              ),
+              icon: Icon(Icons.calendar_today, color: Colors.red),
+              child: Text('TOMORROW', style: TextStyle(color: Colors.red)),
             ),
             Tab(
-              icon: Icon(Icons.calendar_view_day, color: Colors.red, shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)]), // Red icon with brown shadow
-              child: Text(
-                'UPCOMING',
-                style: TextStyle(
-                  color: Colors.red, // Red text in tabs
-                  shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)], // Brown shadow
-                ),
-              ),
+              icon: Icon(Icons.calendar_view_day, color: Colors.red),
+              child: Text('UPCOMING', style: TextStyle(color: Colors.red)),
             ),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          PlaceholderWidget(text: 'Today’s Tasks'),
-          PlaceholderWidget(text: 'Tomorrow’s Tasks'),
-          PlaceholderWidget(text: 'Upcoming Tasks'),
-        ],
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                TaskList(tasks: _tasks),
+                const PlaceholderWidget(text: 'Tomorrow’s Tasks'),
+                const PlaceholderWidget(text: 'Upcoming Tasks'),
+              ],
+            ),
+    );
+  }
+}
+
+class TaskList extends StatelessWidget {
+  final List<Task> tasks;
+
+  const TaskList({super.key, required this.tasks});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: tasks.length,
+      itemBuilder: (context, index) {
+        return ListTile(
+          title: Text(
+            tasks[index].title,
+            style: const TextStyle(color: Colors.red),
+          ),
+          trailing: Icon(
+            tasks[index].completed ? Icons.check_circle : Icons.circle_outlined,
+            color: tasks[index].completed ? Colors.green : Colors.red,
+          ),
+        );
+      },
     );
   }
 }
@@ -108,14 +165,14 @@ class PlaceholderWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Container(
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 24,
-            color: Colors.red, // Red color for placeholder text
-            shadows: [Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)], // Brown shadow
-          ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 24,
+          color: Colors.red,
+          shadows: [
+            Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)
+          ],
         ),
       ),
     );

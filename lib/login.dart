@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+// Dummy WishlistScreen class for navigation
+class WishlistScreen extends StatelessWidget {
+  const WishlistScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: const LoginScreen(),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Wishlist'),
+        backgroundColor: Colors.red,
+      ),
+      body: const Center(
+        child: Text('Welcome to your Wishlist'),
+      ),
     );
   }
 }
@@ -24,56 +27,61 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    _usernameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  void _login() {
-    String username = _usernameController.text;
-    String password = _passwordController.text;
+  Future<void> _login() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-    // Example: simple validation
-    if (username == 'user' && password == 'password') {
-      // Successful login
+    try {
+      // Firebase sign in with email and password
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      // Navigate to Wishlist Screen on successful login
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const WishlistScreen()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'An error occurred';
+
+      if (e.code == 'user-not-found') {
+        message = 'No user found for that email.';
+      } else if (e.code == 'wrong-password') {
+        message = 'Wrong password provided.';
+      }
+
+      // Show error dialog
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Success'),
-          content: const Text('Logged in successfully!'),
+          title: const Text('Login Failed'),
+          content: Text(message),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Navigate to the main app screen if needed
-              },
+              onPressed: () => Navigator.of(context).pop(),
               child: const Text('OK'),
             ),
           ],
         ),
       );
-    } else {
-      // Failed login
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Error'),
-          content: const Text('Invalid username or password.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -86,8 +94,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Padding(
             padding: const EdgeInsets.all(20.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 const Text(
                   'Login',
@@ -100,13 +106,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 20),
                 TextField(
-                  controller: _usernameController,
+                  controller: _emailController,
                   decoration: InputDecoration(
-                    hintText: 'Username',
+                    hintText: 'Email',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
+                  keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 20),
                 TextField(
@@ -120,15 +127,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: _login,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                    textStyle: const TextStyle(fontSize: 18),
-                  ),
-                  child: const Text('Login'),
-                ),
+                _isLoading
+                    ? const CircularProgressIndicator()
+                    : ElevatedButton(
+                        onPressed: _login,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                          textStyle: const TextStyle(fontSize: 18),
+                        ),
+                        child: const Text('Login'),
+                      ),
                 const SizedBox(height: 20),
                 TextButton(
                   onPressed: () {
@@ -151,22 +160,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+// Dummy SignupScreen class
 class SignupScreen extends StatelessWidget {
   const SignupScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Sign Up'),
         backgroundColor: Colors.red,
       ),
-      body: Center(
-        child: const Text(
-          'Signup Screen',
-          style: TextStyle(fontSize: 24, color: Colors.red),
-        ),
+      body: const Center(
+        child: Text('Sign Up Screen'),
       ),
     );
   }

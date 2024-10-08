@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'wishlist.dart';
 
+
 void main() {
   runApp(const MyApp());
 }
@@ -49,13 +50,13 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return const Scaffold(
       backgroundColor: Colors.white,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(bottom: 150.0),
               child: SizedBox(
                 height: 200,
@@ -79,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
               ),
             ),
-            const CircularProgressIndicator(),
+            CircularProgressIndicator(),
           ],
         ),
       ),
