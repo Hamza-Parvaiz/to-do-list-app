@@ -1,33 +1,122 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async'; // Required for Timer
 import 'wishlist.dart';
+import 'login.dart';
+import 'signup.dart'; // Include if you have a signup screen
 
-
-void main() {
-  runApp(const MyApp());
+// Background message handler
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // Handle the message (implement your message handling logic here)
 }
 
-// Global variables to store registered email and password
-String? globalRegisteredEmail;
-String? globalRegisteredPassword;
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  runApp(MyApp());
+}
+
+class MyApp extends StatefulWidget {
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  late Future<bool> _isLoggedInFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLoggedInFuture = _checkLoginStatus();
+    _configureFCM();
+  }
+
+  Future<bool> _checkLoginStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('email');
+    final password = prefs.getString('password');
+
+    if (password != null) {
+      try {
+        final userCredential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(email: email!, password: password!);
+        return userCredential.user != null;
+      } catch (e) {
+        // Clear credentials on login failure
+        await prefs.remove('email');
+        await prefs.remove('password');
+        return false;
+      }
+    }
+    return false;
+  }
+
+  void _configureFCM() async {
+    final messaging = FirebaseMessaging.instance;
+
+    final settings = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      print('User granted permission');
+
+      final token = await messaging.getToken();
+      print("FCM Token: $token");
+
+      // Handle foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        final notification = message.notification;
+        if (notification != null && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${notification.title}: ${notification.body}'),
+            ),
+          );
+        }
+      });
+    } else {
+      print('User declined or has not accepted permission');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Welcome',
-      theme: ThemeData(
-        useMaterial3: true,
-      ),
-      home: const SplashScreen(),
-      debugShowCheckedModeBanner: false,
+    return FutureBuilder<bool>(
+      future: _isLoggedInFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const MaterialApp(
+            home: SplashScreen(),
+            debugShowCheckedModeBanner: false,
+          );
+        }
+
+        final isLoggedIn = snapshot.data ?? false;
+        return MaterialApp(
+          title: 'Welcome',
+          theme: ThemeData(
+            useMaterial3: true,
+            primarySwatch: Colors.red,
+          ),
+          home: isLoggedIn ? const Wishlist() : const LoginScreen(),
+          debugShowCheckedModeBanner: false,
+        );
+      },
     );
   }
 }
 
+// SplashScreen remains as is or can be modified
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -39,8 +128,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // Start a timer to navigate to the LoginScreen after 7 seconds
-    Timer(const Duration(seconds: 7), () {
+    Timer(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -53,287 +141,11 @@ class _SplashScreenState extends State<SplashScreen> {
     return const Scaffold(
       backgroundColor: Colors.white,
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Padding(
-              padding: EdgeInsets.only(bottom: 150.0),
-              child: SizedBox(
-                height: 200,
-                width: 200,
-                child: Center(
-                  child: Text(
-                    "TODO",
-                    style: TextStyle(
-                      fontSize: 70,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.redAccent,
-                      shadows: [
-                        Shadow(
-                          offset: Offset(2.0, 2.0), // Horizontal and vertical offset
-                          blurRadius: 6.0, // Shadow blur radius
-                          color: Colors.brown,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            CircularProgressIndicator(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
-
-  @override
-  _LoginScreenState createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  void _login() {
-    String email = _emailController.text;
-    String password = _passwordController.text;
-
-    if (email == globalRegisteredEmail && password == globalRegisteredPassword) {
-      // Successful login
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const Wishlist()),
-      );
-    } else {
-      // Failed login
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Error'),
-          content: const Text('Invalid email or password.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                const Text(
-                  'Login',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    hintText: 'Email',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    hintText: 'Password',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: _login,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                    textStyle: const TextStyle(fontSize: 18, color: Colors.white),
-                  ),
-                  child: const Text('Login'),
-                ),
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const SignupScreen()),
-                    );
-                  },
-                  child: const Text(
-                    'Sign Up',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
-
-  @override
-  _SignupScreenState createState() => _SignupScreenState();
-}
-
-class _SignupScreenState extends State<SignupScreen> {
-  final TextEditingController _firstNameController = TextEditingController();
-  final TextEditingController _lastNameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-
-  @override
-  void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  void _signup(String firstName, String lastName, String email, String password) {
-    if (firstName.isNotEmpty && lastName.isNotEmpty && email.isNotEmpty && password.isNotEmpty) {
-      // Save registered email and password for login globally
-      globalRegisteredEmail = email;
-      globalRegisteredPassword = password;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account Created Successfully!')),
-      );
-
-      Navigator.pop(context); // Return to login screen
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields!')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sign Up'),
-        backgroundColor: Colors.red,
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                const Text(
-                  'Create an Account',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.red,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _firstNameController,
-                  decoration: InputDecoration(
-                    hintText: 'First Name',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _lastNameController,
-                  decoration: InputDecoration(
-                    hintText: 'Last Name',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    hintText: 'Email',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    hintText: 'Password',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 30),
-                ElevatedButton(
-                  onPressed: () {
-                    _signup(
-                      _firstNameController.text,
-                      _lastNameController.text,
-                      _emailController.text,
-                      _passwordController.text,
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                    textStyle: const TextStyle(fontSize: 18),
-                  ),
-                  child: const Text('Sign Up'),
-                ),
-              ],
-            ),
+        child: Text(
+          "TODO",
+          style: TextStyle(
+            fontSize: 70,
+            fontWeight: FontWeight.bold,
           ),
         ),
       ),

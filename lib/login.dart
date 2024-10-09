@@ -1,42 +1,22 @@
+// login.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
-// Dummy WishlistScreen class for navigation
-class WishlistScreen extends StatelessWidget {
-  const WishlistScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Wishlist'),
-        backgroundColor: Colors.red,
-      ),
-      body: const Center(
-        child: Text('Welcome to your Wishlist'),
-      ),
-    );
-  }
-}
+import 'signup.dart';
+import 'wishlist.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _isLoading = false;
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
+  bool _isLoading = false;
 
   Future<void> _login() async {
     setState(() {
@@ -44,16 +24,21 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Firebase sign in with email and password
+      // Firebase sign in
       UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      // Navigate to Wishlist Screen on successful login
+      // Save login state using SharedPreferences
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userEmail', userCredential.user!.email!);
+
+      // Navigate to Wishlist Screen
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const WishlistScreen()),
+        MaterialPageRoute(builder: (context) => const Wishlist()),
       );
     } on FirebaseAuthException catch (e) {
       String message = 'An error occurred';
@@ -62,6 +47,10 @@ class _LoginScreenState extends State<LoginScreen> {
         message = 'No user found for that email.';
       } else if (e.code == 'wrong-password') {
         message = 'Wrong password provided.';
+      } else if (e.code == 'invalid-email') {
+        message = 'The email address is not valid.';
+      } else if (e.code == 'user-disabled') {
+        message = 'This user has been disabled.';
       }
 
       // Show error dialog
@@ -78,12 +67,29 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       );
+    } catch (e) {
+      // Handle other errors
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Login Failed'),
+          content: const Text('An unexpected error occurred. Please try again.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
     } finally {
       setState(() {
         _isLoading = false;
       });
     }
   }
+
+  // Optionally, implement auto-login if SharedPreferences has 'isLoggedIn' as true
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +100,8 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Padding(
             padding: const EdgeInsets.all(20.0),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
                 const Text(
                   'Login',
@@ -128,7 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 30),
                 _isLoading
-                    ? const CircularProgressIndicator()
+                    ? const Center(child: CircularProgressIndicator())
                     : ElevatedButton(
                         onPressed: _login,
                         style: ElevatedButton.styleFrom(
@@ -155,24 +163,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-// Dummy SignupScreen class
-class SignupScreen extends StatelessWidget {
-  const SignupScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sign Up'),
-        backgroundColor: Colors.red,
-      ),
-      body: const Center(
-        child: Text('Sign Up Screen'),
       ),
     );
   }

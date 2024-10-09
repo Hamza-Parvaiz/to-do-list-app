@@ -1,45 +1,17 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; // Add 'as http'
-
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: TaskScreen(),
-    );
-  }
-}
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+// import 'edit_task.dart' as editTask; // Keeping the alias
+import 'package:firebase_messaging/firebase_messaging.dart';
+// Keeping the alias
 
 class Task {
-  final int userId;
-  final int id;
-  final String title;
-  final bool completed;
+  final String name;
+  final DateTime date;
+  final String category;
 
-  Task({
-    required this.userId,
-    required this.id,
-    required this.title,
-    required this.completed,
-  });
-
-  // Factory method to create a Task from JSON
-  factory Task.fromJson(Map<String, dynamic> json) {
-    return Task(
-      userId: json['userId'],
-      id: json['id'],
-      title: json['title'],
-      completed: json['completed'],
-    );
-  }
+  Task({required this.name, required this.date, required this.category});
 }
 
 class TaskScreen extends StatefulWidget {
@@ -60,6 +32,7 @@ class _TaskScreenState extends State<TaskScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _fetchTasks();
+    _configureFCM();
   }
 
   @override
@@ -68,7 +41,45 @@ class _TaskScreenState extends State<TaskScreen>
     super.dispose();
   }
 
-  // Fetch tasks from API
+  // Configure Firebase Cloud Messaging
+  void _configureFCM() async {
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+    NotificationSettings settings = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      print('User granted permission');
+
+      // Listen to foreground messages
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        print('Received a message in the foreground!');
+        if (message.notification != null) {
+          // Show a dialog or local notification
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(message.notification!.title ?? 'Notification'),
+              content: Text(message.notification!.body ?? ''),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      });
+    } else {
+      print('User declined or has not accepted permission');
+    }
+  }
+
+  // Fetch tasks from API (For demonstration, using a local API)
   Future<void> _fetchTasks() async {
     final response =
         await http.get(Uri.parse('https://jsonplaceholder.typicode.com/todos'));
@@ -76,7 +87,14 @@ class _TaskScreenState extends State<TaskScreen>
     if (response.statusCode == 200) {
       List data = jsonDecode(response.body);
       setState(() {
-        _tasks = data.map((task) => Task.fromJson(task)).toList();
+        _tasks = data
+            .map((task) => Task(
+                  name: task['title'],
+                  date: DateTime.now()
+                      .add(Duration(days: task['id'] % 30)), // Random date
+                  category: _assignCategory(task['id']),
+                ))
+            .toList();
         _isLoading = false;
       });
     } else {
@@ -84,11 +102,18 @@ class _TaskScreenState extends State<TaskScreen>
     }
   }
 
+  // Assign category based on task ID for demonstration
+  String _assignCategory(int id) {
+    if (id % 4 == 0) return 'Gym';
+    if (id % 4 == 1) return 'Business Ideas';
+    if (id % 4 == 2) return 'Coding Practice';
+    return 'Music Classes';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
         title: const Text(
           'All Tasks',
           style: TextStyle(
@@ -102,20 +127,10 @@ class _TaskScreenState extends State<TaskScreen>
         ),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.red,
           tabs: const [
-            Tab(
-              icon: Icon(Icons.event, color: Colors.red),
-              child: Text('TODAY', style: TextStyle(color: Colors.red)),
-            ),
-            Tab(
-              icon: Icon(Icons.calendar_today, color: Colors.red),
-              child: Text('TOMORROW', style: TextStyle(color: Colors.red)),
-            ),
-            Tab(
-              icon: Icon(Icons.calendar_view_day, color: Colors.red),
-              child: Text('UPCOMING', style: TextStyle(color: Colors.red)),
-            ),
+            Tab(icon: Icon(Icons.list), text: "All"),
+            Tab(icon: Icon(Icons.done), text: "Completed"),
+            Tab(icon: Icon(Icons.pending), text: "Pending"),
           ],
         ),
       ),
@@ -124,57 +139,37 @@ class _TaskScreenState extends State<TaskScreen>
           : TabBarView(
               controller: _tabController,
               children: [
-                TaskList(tasks: _tasks),
-                const PlaceholderWidget(text: 'Tomorrow’s Tasks'),
-                const PlaceholderWidget(text: 'Upcoming Tasks'),
+                _buildTaskList(),
+                _buildTaskList(filterCompleted: true),
+                _buildTaskList(filterCompleted: false),
               ],
             ),
     );
   }
-}
 
-class TaskList extends StatelessWidget {
-  final List<Task> tasks;
+  Widget _buildTaskList({bool? filterCompleted}) {
+    List<Task> filteredTasks = _tasks;
+    if (filterCompleted != null) {
+      filteredTasks = _tasks.where((task) {
+        bool isCompleted = task.date.isBefore(DateTime.now());
+        return filterCompleted ? isCompleted : !isCompleted;
+      }).toList();
+    }
 
-  const TaskList({super.key, required this.tasks});
-
-  @override
-  Widget build(BuildContext context) {
     return ListView.builder(
-      itemCount: tasks.length,
+      itemCount: filteredTasks.length,
       itemBuilder: (context, index) {
+        Task task = filteredTasks[index];
         return ListTile(
-          title: Text(
-            tasks[index].title,
-            style: const TextStyle(color: Colors.red),
-          ),
-          trailing: Icon(
-            tasks[index].completed ? Icons.check_circle : Icons.circle_outlined,
-            color: tasks[index].completed ? Colors.green : Colors.red,
-          ),
+          title: Text(task.name),
+          subtitle: Text(DateFormat('yyyy-MM-dd').format(task.date)),
+          trailing: Text(task.category),
+          onTap: () {
+            Navigator.push(
+                context, MaterialPageRoute(builder: EditTaskScreen(_tasks[0])));
+          },
         );
       },
-    );
-  }
-}
-
-class PlaceholderWidget extends StatelessWidget {
-  final String text;
-  const PlaceholderWidget({super.key, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 24,
-          color: Colors.red,
-          shadows: [
-            Shadow(offset: Offset(2, 2), color: Colors.brown, blurRadius: 5)
-          ],
-        ),
-      ),
     );
   }
 }
